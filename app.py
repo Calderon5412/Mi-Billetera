@@ -6,7 +6,7 @@ from supabase import create_client
 #Conexion con supabase usando los secretos de Streamlit Cloud
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-supabase = create_client(SUPABASE_URL, SUPABSE_KEY)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Configuración inicial de la página
 st.set_page_config(page_title="Control Financiero", page_icon="💰", layout="wide")
