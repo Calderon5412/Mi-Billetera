@@ -24,16 +24,25 @@ st.markdown("""
 # Ruta de la base de datos limpia de movimientos financieros
 DB_PATH = "movimientos_financieros.csv"
 
-# Inicialización de la base de datos vacía
+# Inicialización de la base de datos vacía via supabase
 def cargar_datos():
-    if os.path.exists(DB_PATH):
         try:
-            df = pd.read_csv(DB_PATH)
-            df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce').dt.date
-            df = df.dropna(subset=['Fecha'])
+            response = (
+                supabase.tablet("transacciones")
+                .select("*")
+                .order("id", desc=True)
+                .execute()
+            )
+            if response.data:
+                df = pd.DataFrame(response.data)
+
+            df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.date
             return df
-        except Exception:
-            pass
+        except Exception as e:
+        return pd.DataFrame(
+            columns=["id", "Fecha", "Detalle", "Cuenta", "Debe", "haber"]
+        )
+    
     # Crear base de datos vacía
     df_vacio = pd.DataFrame(columns=["Fecha", "Detalle", "Cuenta", "Debe", "Haber"])
     df_vacio.to_csv(DB_PATH, index=False)
@@ -65,7 +74,7 @@ else:
     df["Mes_Auto"] = None
 
 # Título de la app
-st.title("💰 Mi Billetera Financiera Real - Pesos Colombianos (COP)")
+st.title("💰 Mi Billetera Calde'- Pesos Colombianos (COP)")
 st.markdown("Esta aplicación trabaja de forma local y almacena la información exclusivamente en Pesos Colombianos (**COP**).")
 
 # Sidebar - Gestión de Cuentas
@@ -108,7 +117,15 @@ if tipo_registro == "Movimiento Simple":
                 df["Fecha"] = pd.to_datetime(df["Fecha"], errors='coerce').dt.date
                 df = df.dropna(subset=["Fecha"])
                 df.to_csv(DB_PATH, index=False)
-                st.session_state.transactions = df
+                st.session_state.transactions = df  
+                data = {
+                    "fecha": str(fecha),
+                    "cuenta": cuenta,
+                    "debe": debe, 
+                    "haber": haber,
+                    "descripcion": descripcion,
+                }
+                supabase.tablet("transacciones").insert(data).execute()
                 st.sidebar.success("¡Registrado con éxito!")
                 st.rerun()
 
@@ -145,6 +162,7 @@ elif tipo_registro == "Transferencia entre Cuentas":
                 df = df.dropna(subset=["Fecha"])
                 df.to_csv(DB_PATH, index=False)
                 st.session_state.transactions = df
+                supabase.table("transacciones").insert([fila_salida, fila_entrada]).execute()
                 st.sidebar.success("¡Transferencia registrada exitosamente!")
                 st.rerun()
 
