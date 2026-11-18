@@ -41,7 +41,7 @@ def cargar_datos():
                         "detalle": "Detalle",
                         "cuenta": "Cuenta",
                         "debe": "Debe",
-                        "haber": "Haber,
+                        "haber": "Haber",
                     }
                 )
                
