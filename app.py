@@ -35,6 +35,16 @@ def cargar_datos():
             )
             if response.data:
                 df = pd.DataFrame(response.data)
+                df = df.rename(
+                    columns={
+                        "fecha": "Fecha",
+                        "detalle": "Detalle",
+                        "cuenta": "Cuenta",
+                        "debe": "Debe",
+                        "haber": "Haber,
+                    }
+                )
+               
                 df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.date
                 return df
         except Exception as e:
