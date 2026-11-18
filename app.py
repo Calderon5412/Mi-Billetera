@@ -39,8 +39,8 @@ def cargar_datos():
             df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.date
             return df
         except Exception as e:
-        return pd.DataFrame(
-            columns=["id", "Fecha", "Detalle", "Cuenta", "Debe", "haber"]
+            return pd.DataFrame(
+                columns=["id", "Fecha", "Detalle", "Cuenta", "Debe", "haber"]
         )
     
     # Crear base de datos vacía
