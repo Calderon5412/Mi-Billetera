@@ -35,19 +35,13 @@ def cargar_datos():
             )
             if response.data:
                 df = pd.DataFrame(response.data)
-
-            df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.date
-            return df
+                df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.date
+                return df
         except Exception as e:
-            return pd.DataFrame(
-                columns=["id", "Fecha", "Detalle", "Cuenta", "Debe", "haber"]
-        )
-    
-    # Crear base de datos vacía
-    df_vacio = pd.DataFrame(columns=["Fecha", "Detalle", "Cuenta", "Debe", "Haber"])
-    df_vacio.to_csv(DB_PATH, index=False)
-    return df_vacio
-
+            pass
+            
+        return pd.DataFrame(columns=["id", "Fecha", "Detalle", "Cuenta", "Debe", "haber"])
+            
 # Inicializar estado de sesión
 if 'transactions' not in st.session_state:
     st.session_state.transactions = cargar_datos()
