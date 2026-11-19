@@ -425,7 +425,8 @@ else:
 cuentas = st.session_state.accounts_list
 st.markdown(f"### 📊 Estado de tus Cuentas (COP) - {selected_month.strftime('%B %Y').capitalize() if hasattr(selected_month, 'strftime') else str(selected_month)}")
 
-cols = st.columns(len(cuentas)) if len(cuentas) > 0 else []	otal_capital = 0.0
+cols = st.columns(len(cuentas)) if len(cuentas) > 0 else []
+total_capital = 0.0
 
 for idx, cta in enumerate(cuentas):
     debe_ant = df_before[df_before["cuenta"] == cta]["debe"].sum() if not df_before.empty else 0.0
