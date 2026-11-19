@@ -36,7 +36,7 @@ if "autenticado" not in st.session_state:
 if not st.session_state.autenticado:
     st.title("🔑 Acceso Protegido")
     st.markdown("Por favor ingresa el código de acceso para ver la información financiera.")
-    
+
     codigo_ingresado = st.text_input("Código de Seguridad:", type="password")
     if st.button("Ingresar"):
         if codigo_ingresado == CODIGO_ACCESO:
@@ -50,7 +50,7 @@ if not st.session_state.autenticado:
 # Ruta de la base de datos limpia de movimientos financieros
 DB_PATH = "movimientos_financieros.csv"
 
-# Inicialización de la base de datos vacía via supabase
+# Inicialización de la base de datos vacía via supabase (manteniendo minúsculas)
 def cargar_datos():
         try:
             response = (
@@ -61,22 +61,12 @@ def cargar_datos():
             )
             if response.data:
                 df = pd.DataFrame(response.data)
-                df = df.rename(
-                    columns={
-                        "fecha": "Fecha",
-                        "detalle": "Detalle",
-                        "cuenta": "Cuenta",
-                        "debe": "Debe",
-                        "haber": "Haber",
-                    }
-                )
-
-                df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.date
+                df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce").dt.date
                 return df
         except Exception as e:
             pass
 
-        return pd.DataFrame(columns=["id", "Fecha", "Detalle", "Cuenta", "Debe", "Haber"])
+        return pd.DataFrame(columns=["id", "fecha", "detalle", "cuenta", "debe", "haber"])
 
 # Inicializar estado de sesión para transacciones
 if 'transactions' not in st.session_state:
@@ -88,20 +78,20 @@ df = st.session_state.transactions.copy()
 cuentas_defecto = ["Efectivo", "Nequi", "Nu", "BBVA", "Pibank"]
 if 'accounts_list' not in st.session_state:
     if not df.empty:
-        cuentas_existentes = list(df["Cuenta"].dropna().unique())
+        cuentas_existentes = list(df["cuenta"].dropna().unique())
         for c in cuentas_existentes:
             if c not in cuentas_defecto:
                 cuentas_defecto.append(c)
     st.session_state.accounts_list = cuentas_defecto
 
-# Formatear fechas de forma segura
+# Formatear fechas de forma segura y crear columna auxiliar para filtro mensual
 if not df.empty:
-    df["Fecha"] = pd.to_datetime(df["Fecha"], errors='coerce').dt.date
-    df = df.dropna(subset=["Fecha"])
-    df["Mes_Auto"] = df["Fecha"].apply(lambda x: datetime.date(x.year, x.month, 1) if isinstance(x, (datetime.date, datetime.datetime)) else None)
-    df = df.dropna(subset=["Mes_Auto"])
+    df["fecha"] = pd.to_datetime(df["fecha"], errors='coerce').dt.date
+    df = df.dropna(subset=["fecha"])
+    df["mes_auto"] = df["fecha"].apply(lambda x: datetime.date(x.year, x.month, 1) if isinstance(x, (datetime.date, datetime.datetime)) else None)
+    df = df.dropna(subset=["mes_auto"])
 else:
-    df["Mes_Auto"] = None
+    df["mes_auto"] = None
 
 # Botón de Cerrar Sesión en Sidebar
 if st.sidebar.button("🔒 Cerrar Sesión"):
@@ -139,30 +129,34 @@ if tipo_registro == "Movimiento Simple":
             if nuevo_detalle == "":
                 st.sidebar.error("Por favor ingresa un detalle.")
             else:
-                debe = monto if "Ingreso" in tipo_mov else 0.0
-                haber = monto if "Egreso" in tipo_mov else 0.0
+                debe_val = float(monto) if "Ingreso" in tipo_mov else 0.0
+                haber_val = float(monto) if "Egreso" in tipo_mov else 0.0
                 nueva_fila = {
-                    "Fecha": nueva_fecha,
-                    "Detalle": nuevo_detalle,
-                    "Cuenta": nueva_cuenta,
-                    "Debe": debe,
-                    "Haber": haber
+                    "fecha": nueva_fecha,
+                    "detalle": nuevo_detalle,
+                    "cuenta": nueva_cuenta,
+                    "debe": debe_val,
+                    "haber": haber_val
                 }
                 df = pd.concat([df, pd.DataFrame([nueva_fila])], ignore_index=True)
-                df["Fecha"] = pd.to_datetime(df["Fecha"], errors='coerce').dt.date
-                df = df.dropna(subset=["Fecha"])
+                df["fecha"] = pd.to_datetime(df["fecha"], errors='coerce').dt.date
+                df = df.dropna(subset=["fecha"])
                 df.to_csv(DB_PATH, index=False)
                 st.session_state.transactions = df
+                
                 data = {
                     "fecha": str(nueva_fecha),
                     "cuenta": nueva_cuenta,
-                    "debe": debe,
-                    "haber": haber,
+                    "debe": debe_val,
+                    "haber": haber_val,
                     "detalle": nuevo_detalle,
                 }
-                supabase.table("transacciones").insert(data).execute()
-                st.sidebar.success("¡Registrado con éxito!")
-                st.rerun()
+                try:
+                    supabase.table("transacciones").insert(data).execute()
+                    st.sidebar.success("¡Registrado con éxito!")
+                    st.rerun()
+                except Exception as ex:
+                    st.sidebar.error(f"Error al sincronizar con Supabase: {ex}")
 
 elif tipo_registro == "Transferencia entre Cuentas":
     with st.sidebar.form("nueva_transferencia", clear_on_submit=True):
@@ -178,49 +172,53 @@ elif tipo_registro == "Transferencia entre Cuentas":
             elif trans_monto <= 0:
                 st.sidebar.error("El monto debe ser mayor a 0.")
             else:
+                monto_val = float(trans_monto)
                 fila_salida = {
-                    "Fecha": trans_fecha,
-                    "Detalle": f"Transferencia enviada a {cuenta_destino}",
-                    "Cuenta": cuenta_origen,
-                    "Debe": 0.0,
-                    "Haber": trans_monto
+                    "fecha": trans_fecha,
+                    "detalle": f"Transferencia enviada a {cuenta_destino}",
+                    "cuenta": cuenta_origen,
+                    "debe": 0.0,
+                    "haber": monto_val
                 }
                 fila_entrada = {
-                    "Fecha": trans_fecha,
-                    "Detalle": f"Transferencia recibida desde {cuenta_origen}",
-                    "Cuenta": cuenta_destino,
-                    "Debe": trans_monto,
-                    "Haber": 0.0
+                    "fecha": trans_fecha,
+                    "detalle": f"Transferencia recibida desde {cuenta_origen}",
+                    "cuenta": cuenta_destino,
+                    "debe": monto_val,
+                    "haber": 0.0
                 }
                 df = pd.concat([df, pd.DataFrame([fila_salida, fila_entrada])], ignore_index=True)
-                df["Fecha"] = pd.to_datetime(df["Fecha"], errors='coerce').dt.date
-                df = df.dropna(subset=["Fecha"])
+                df["fecha"] = pd.to_datetime(df["fecha"], errors='coerce').dt.date
+                df = df.dropna(subset=["fecha"])
                 df.to_csv(DB_PATH, index=False)
                 st.session_state.transactions = df
-                # Mapeando columnas del DataFrame a los nombres esperados en Supabase
+                
                 datos_supabase = [
                     {
                         "fecha": str(trans_fecha),
                         "detalle": f"Transferencia enviada a {cuenta_destino}",
                         "cuenta": cuenta_origen,
                         "debe": 0.0,
-                        "haber": trans_monto
+                        "haber": monto_val
                     },
                     {
                         "fecha": str(trans_fecha),
                         "detalle": f"Transferencia recibida desde {cuenta_origen}",
                         "cuenta": cuenta_destino,
-                        "debe": trans_monto,
+                        "debe": monto_val,
                         "haber": 0.0
                     }
                 ]
-                supabase.table("transacciones").insert(datos_supabase).execute()
-                st.sidebar.success("¡Transferencia registrada exitosamente!")
-                st.rerun()
+                try:
+                    supabase.table("transacciones").insert(datos_supabase).execute()
+                    st.sidebar.success("¡Transferencia registrada exitosamente!")
+                    st.rerun()
+                except Exception as ex:
+                    st.sidebar.error(f"Error al sincronizar la transferencia con Supabase: {ex}")
 
 # Filtro de Mes
-if not df.empty and df["Mes_Auto"].notna().any():
-    months = sorted(df["Mes_Auto"].unique())
+if not df.empty and df["mes_auto"].notna().any():
+    months = sorted(df["mes_auto"].unique())
 else:
     months = [datetime.date(datetime.date.today().year, datetime.date.today().month, 1)]
 
@@ -232,11 +230,11 @@ selected_month = st.sidebar.selectbox(
 
 # Segmentación de datos (histórico vs mes seleccionado)
 if not df.empty:
-    df_before = df[df["Mes_Auto"] < selected_month]
-    df_month = df[df["Mes_Auto"] == selected_month]
+    df_before = df[df["mes_auto"] < selected_month]
+    df_month = df[df["mes_auto"] == selected_month]
 else:
-    df_before = pd.DataFrame(columns=["Cuenta", "Debe", "Haber"])
-    df_month = pd.DataFrame(columns=["Cuenta", "Debe", "Haber"])
+    df_before = pd.DataFrame(columns=["cuenta", "debe", "haber"])
+    df_month = pd.DataFrame(columns=["cuenta", "debe", "haber"])
 
 # Panel de Cuentas T
 cuentas = st.session_state.accounts_list
@@ -246,12 +244,12 @@ cols = st.columns(len(cuentas)) if len(cuentas) > 0 else []
 total_capital = 0.0
 
 for idx, cta in enumerate(cuentas):
-    debe_ant = df_before[df_before["Cuenta"] == cta]["Debe"].sum() if not df_before.empty else 0.0
-    haber_ant = df_before[df_before["Cuenta"] == cta]["Haber"].sum() if not df_before.empty else 0.0
+    debe_ant = df_before[df_before["cuenta"] == cta]["debe"].sum() if not df_before.empty else 0.0
+    haber_ant = df_before[df_before["cuenta"] == cta]["haber"].sum() if not df_before.empty else 0.0
     saldo_ini = debe_ant - haber_ant
 
-    debe_mes = df_month[df_month["Cuenta"] == cta]["Debe"].sum() if not df_month.empty else 0.0
-    haber_mes = df_month[df_month["Cuenta"] == cta]["Haber"].sum() if not df_month.empty else 0.0
+    debe_mes = df_month[df_month["cuenta"] == cta]["debe"].sum() if not df_month.empty else 0.0
+    haber_mes = df_month[df_month["cuenta"] == cta]["haber"].sum() if not df_month.empty else 0.0
 
     saldo_final = saldo_ini + debe_mes - haber_mes
     total_capital += saldo_final
@@ -280,28 +278,31 @@ st.divider()
 
 # Vista de editor de base de datos directa ordenada por Fecha
 st.markdown("### 📝 Editor y Visor de Base de Datos (COP)")
-st.markdown("Aquí puedes editar transacciones directamente. Las transacciones se muestran ordenadas por Fecha de forma predeterminada.")
+st.markdown("Aquí puedes editar transacciones directamente. Las transacciones se muestran ordenadas por fecha de forma predeterminada.")
 
-# Ordenar el dataframe por Fecha antes de enviarlo al editor de Streamlit
-df_ordenado = df[["Fecha", "Detalle", "Cuenta", "Debe", "Haber"]].sort_values(by="Fecha", ascending=True)
+# Ordenar el dataframe por fecha antes de enviarlo al editor de Streamlit
+df_ordenado = df[["fecha", "detalle", "cuenta", "debe", "haber"]].sort_values(by="fecha", ascending=True)
 
 edited_df = st.data_editor(
     df_ordenado,
     num_rows="dynamic",
     use_container_width=True,
     column_config={
-        "Debe": st.column_config.NumberColumn("Debe / Entra (COP)", format="%d"),
-        "Haber": st.column_config.NumberColumn("Haber / Sale (COP)", format="%d"),
+        "fecha": st.column_config.DateColumn("Fecha"),
+        "detalle": st.column_config.TextColumn("Detalle"),
+        "cuenta": st.column_config.TextColumn("Cuenta"),
+        "debe": st.column_config.NumberColumn("Debe / Entra (COP)", format="%d"),
+        "haber": st.column_config.NumberColumn("Haber / Sale (COP)", format="%d"),
     },
     key="db_editor"
 )
 
 if st.button("💾 Aplicar y Guardar Cambios en Base de Datos"):
-    edited_df["Fecha"] = pd.to_datetime(edited_df["Fecha"], errors='coerce').dt.date
-    edited_df = edited_df.dropna(subset=["Fecha"])
+    edited_df["fecha"] = pd.to_datetime(edited_df["fecha"], errors='coerce').dt.date
+    edited_df = edited_df.dropna(subset=["fecha"])
 
-    edited_df["Debe"] = pd.to_numeric(edited_df["Debe"], errors='coerce').fillna(0.0)
-    edited_df["Haber"] = pd.to_numeric(edited_df["Haber"], errors='coerce').fillna(0.0)
+    edited_df["debe"] = pd.to_numeric(edited_df["debe"], errors='coerce').fillna(0.0)
+    edited_df["haber"] = pd.to_numeric(edited_df["haber"], errors='coerce').fillna(0.0)
 
     # Guardar en archivo manteniendo el formato
     edited_df.to_csv(DB_PATH, index=False)
