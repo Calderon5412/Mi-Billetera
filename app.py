@@ -28,7 +28,7 @@ DB_PATH = "movimientos_financieros.csv"
 def cargar_datos():
         try:
             response = (
-                supabase.tablet("transacciones")
+                supabase.table("transacciones")
                 .select("*")
                 .order("id", desc=True)
                 .execute()
@@ -44,14 +44,14 @@ def cargar_datos():
                         "haber": "Haber",
                     }
                 )
-               
+
                 df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.date
                 return df
         except Exception as e:
             pass
-            
-        return pd.DataFrame(columns=["id", "Fecha", "Detalle", "Cuenta", "Debe", "haber"])
-            
+
+        return pd.DataFrame(columns=["id", "Fecha", "Detalle", "Cuenta", "Debe", "Haber"])
+
 # Inicializar estado de sesión
 if 'transactions' not in st.session_state:
     st.session_state.transactions = cargar_datos()
@@ -121,15 +121,15 @@ if tipo_registro == "Movimiento Simple":
                 df["Fecha"] = pd.to_datetime(df["Fecha"], errors='coerce').dt.date
                 df = df.dropna(subset=["Fecha"])
                 df.to_csv(DB_PATH, index=False)
-                st.session_state.transactions = df  
+                st.session_state.transactions = df
                 data = {
-                    "fecha": str(fecha),
-                    "cuenta": cuenta,
-                    "debe": debe, 
+                    "fecha": str(nueva_fecha),
+                    "cuenta": nueva_cuenta,
+                    "debe": debe,
                     "haber": haber,
-                    "descripcion": descripcion,
+                    "detalle": nuevo_detalle,
                 }
-                supabase.tablet("transacciones").insert(data).execute()
+                supabase.table("transacciones").insert(data).execute()
                 st.sidebar.success("¡Registrado con éxito!")
                 st.rerun()
 
@@ -166,7 +166,24 @@ elif tipo_registro == "Transferencia entre Cuentas":
                 df = df.dropna(subset=["Fecha"])
                 df.to_csv(DB_PATH, index=False)
                 st.session_state.transactions = df
-                supabase.table("transacciones").insert([fila_salida, fila_entrada]).execute()
+                # Mapeando columnas del DataFrame a los nombres esperados en Supabase
+                datos_supabase = [
+                    {
+                        "fecha": str(trans_fecha),
+                        "detalle": f"Transferencia enviada a {cuenta_destino}",
+                        "cuenta": cuenta_origen,
+                        "debe": 0.0,
+                        "haber": trans_monto
+                    },
+                    {
+                        "fecha": str(trans_fecha),
+                        "detalle": f"Transferencia recibida desde {cuenta_origen}",
+                        "cuenta": cuenta_destino,
+                        "debe": trans_monto,
+                        "haber": 0.0
+                    }
+                ]
+                supabase.table("transacciones").insert(datos_supabase).execute()
                 st.sidebar.success("¡Transferencia registrada exitosamente!")
                 st.rerun()
 
