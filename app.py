@@ -3,10 +3,17 @@ import pandas as pd
 import datetime
 import os
 from supabase import create_client
+
 #Conexion con supabase usando los secretos de Streamlit Cloud
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# ==========================================================
+# 🔑 CONFIGURA AQUÍ TU CÓDIGO DE ACCESO SEGURO
+# ==========================================================
+CODIGO_ACCESO = "1234"  # Cambia esto por tu PIN o contraseña favorita
+# ==========================================================
 
 # Configuración inicial de la página
 st.set_page_config(page_title="Control Financiero", page_icon="💰", layout="wide")
@@ -20,6 +27,25 @@ st.markdown("""
     .metric-value { font-size: 1.8em; font-weight: bold; color: #1e3d59; }
     </style>
 """, unsafe_allow_html=True)
+
+# Inicializar estado de sesión para el login
+if "autenticado" not in st.session_state:
+    st.session_state.autenticado = False
+
+# Pantalla de Login Simple si no está autenticado
+if not st.session_state.autenticado:
+    st.title("🔑 Acceso Protegido")
+    st.markdown("Por favor ingresa el código de acceso para ver la información financiera.")
+    
+    codigo_ingresado = st.text_input("Código de Seguridad:", type="password")
+    if st.button("Ingresar"):
+        if codigo_ingresado == CODIGO_ACCESO:
+            st.session_state.autenticado = True
+            st.success("¡Acceso concedido!")
+            st.rerun()
+        else:
+            st.error("Código de seguridad incorrecto. Inténtalo de nuevo.")
+    st.stop()  # Detiene la ejecución para que no cargue el resto de la app si no está logueado
 
 # Ruta de la base de datos limpia de movimientos financieros
 DB_PATH = "movimientos_financieros.csv"
@@ -52,7 +78,7 @@ def cargar_datos():
 
         return pd.DataFrame(columns=["id", "Fecha", "Detalle", "Cuenta", "Debe", "Haber"])
 
-# Inicializar estado de sesión
+# Inicializar estado de sesión para transacciones
 if 'transactions' not in st.session_state:
     st.session_state.transactions = cargar_datos()
 
@@ -76,6 +102,11 @@ if not df.empty:
     df = df.dropna(subset=["Mes_Auto"])
 else:
     df["Mes_Auto"] = None
+
+# Botón de Cerrar Sesión en Sidebar
+if st.sidebar.button("🔒 Cerrar Sesión"):
+    st.session_state.autenticado = False
+    st.rerun()
 
 # Título de la app
 st.title("💰 Mi Billetera Calde'- Pesos Colombianos (COP)")
