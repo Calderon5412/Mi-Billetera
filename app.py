@@ -4,7 +4,7 @@ import datetime
 import os
 from supabase import create_client
 
-#Conexion con supabase usando los secretos de Streamlit Cloud
+# Conexion con supabase usando los secretos de Streamlit Cloud
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -12,7 +12,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # ==========================================================
 # 🔑 CONFIGURA AQUÍ TU CÓDIGO DE ACCESO SEGURO
 # ==========================================================
-CODIGO_ACCESO = "963"  # Cambia esto por tu PIN o contraseña favorita
+CODIGO_ACCESO = "6363"  # Cambia esto por tu PIN o contraseña favorita
 # ==========================================================
 
 # Configuración inicial de la página
@@ -45,34 +45,63 @@ if not st.session_state.autenticado:
             st.rerun()
         else:
             st.error("Código de seguridad incorrecto. Inténtalo de nuevo.")
-    st.stop()  # Detiene la ejecución para que no cargue el resto de la app si no está logueado
+    st.stop()
 
-# Ruta de la base de datos limpia de movimientos financieros
+# Rutas de base de datos locales
 DB_PATH = "movimientos_financieros.csv"
+PRESTAMOS_PATH = "prestamos.csv"
 
-# Inicialización de la base de datos vacía via supabase (manteniendo minúsculas)
+# Cargar datos de transacciones desde Supabase o Local
 def cargar_datos():
+    try:
+        response = (
+            supabase.table("transacciones")
+            .select("*")
+            .order("id", desc=True)
+            .execute()
+        )
+        if response.data:
+            df = pd.DataFrame(response.data)
+            df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce").dt.date
+            return df
+    except Exception:
+        pass
+    return pd.DataFrame(columns=["id", "fecha", "detalle", "cuenta", "debe", "haber"])
+
+# Cargar datos de préstamos desde Supabase o Local
+def cargar_prestamos():
+    try:
+        response = (
+            supabase.table("prestamos")
+            .select("*")
+            .order("id", desc=True)
+            .execute()
+        )
+        if response.data:
+            df_p = pd.DataFrame(response.data)
+            df_p["fecha"] = pd.to_datetime(df_p["fecha"], errors="coerce").dt.date
+            return df_p
+    except Exception:
+        pass
+    
+    if os.path.exists(PRESTAMOS_PATH):
         try:
-            response = (
-                supabase.table("transacciones")
-                .select("*")
-                .order("id", desc=True)
-                .execute()
-            )
-            if response.data:
-                df = pd.DataFrame(response.data)
-                df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce").dt.date
-                return df
-        except Exception as e:
+            df_p = pd.read_csv(PRESTAMOS_PATH)
+            df_p["fecha"] = pd.to_datetime(df_p["fecha"], errors="coerce").dt.date
+            return df_p
+        except Exception:
             pass
+    return pd.DataFrame(columns=["id", "fecha", "deudor", "monto_inicial", "tasa_interes", "monto_total_estimado", "monto_pagado", "intereses_pagados_reales", "cuenta_origen", "estado"])
 
-        return pd.DataFrame(columns=["id", "fecha", "detalle", "cuenta", "debe", "haber"])
-
-# Inicializar estado de sesión para transacciones
+# Inicializar estados de sesión
 if 'transactions' not in st.session_state:
     st.session_state.transactions = cargar_datos()
 
+if 'prestamos' not in st.session_state:
+    st.session_state.prestamos = cargar_prestamos()
+
 df = st.session_state.transactions.copy()
+df_prestamos = st.session_state.prestamos.copy()
 
 # Lista de cuentas dinámicas por defecto
 cuentas_defecto = ["Efectivo", "Nequi", "Nu", "BBVA", "Pibank"]
@@ -84,7 +113,7 @@ if 'accounts_list' not in st.session_state:
                 cuentas_defecto.append(c)
     st.session_state.accounts_list = cuentas_defecto
 
-# Formatear fechas de forma segura y crear columna auxiliar para filtro mensual
+# Formatear fechas de transacciones de forma segura
 if not df.empty:
     df["fecha"] = pd.to_datetime(df["fecha"], errors='coerce').dt.date
     df = df.dropna(subset=["fecha"])
@@ -100,7 +129,7 @@ if st.sidebar.button("🔒 Cerrar Sesión"):
 
 # Título de la app
 st.title("💰 Mi Billetera Calde'- Pesos Colombianos (COP)")
-st.markdown("Esta aplicación trabaja de forma local y almacena la información exclusivamente en Pesos Colombianos (**COP**).")
+st.markdown("Esta aplicación trabaja de forma sincronizada y almacena la información en Pesos Colombianos (**COP**).")
 
 # Sidebar - Gestión de Cuentas
 st.sidebar.header("⚙️ Gestionar Cuentas")
@@ -112,9 +141,9 @@ with st.sidebar.expander("🛠️ Añadir Nueva Cuenta"):
             st.success(f"¡Cuenta '{nueva_cta_nombre}' añadida!")
             st.rerun()
 
-# Sidebar - Registrar Movimiento o Transferencia
-st.sidebar.header("➕ Registrar Movimiento / Transferencia")
-tipo_registro = st.sidebar.radio("Selecciona tipo de registro:", ["Movimiento Simple", "Transferencia entre Cuentas"])
+# Sidebar - Registrar Movimiento o Transferencia o Préstamo
+st.sidebar.header("➕ Registrar Operación")
+tipo_registro = st.sidebar.radio("Selecciona tipo de registro:", ["Movimiento Simple", "Transferencia entre Cuentas", "Préstamo Nuevo", "Cobrar Préstamo"])
 
 if tipo_registro == "Movimiento Simple":
     with st.sidebar.form("nuevo_registro", clear_on_submit=True):
@@ -143,7 +172,7 @@ if tipo_registro == "Movimiento Simple":
                 df = df.dropna(subset=["fecha"])
                 df.to_csv(DB_PATH, index=False)
                 st.session_state.transactions = df
-                
+
                 data = {
                     "fecha": str(nueva_fecha),
                     "cuenta": nueva_cuenta,
@@ -192,7 +221,7 @@ elif tipo_registro == "Transferencia entre Cuentas":
                 df = df.dropna(subset=["fecha"])
                 df.to_csv(DB_PATH, index=False)
                 st.session_state.transactions = df
-                
+
                 datos_supabase = [
                     {
                         "fecha": str(trans_fecha),
@@ -216,7 +245,162 @@ elif tipo_registro == "Transferencia entre Cuentas":
                 except Exception as ex:
                     st.sidebar.error(f"Error al sincronizar la transferencia con Supabase: {ex}")
 
-# Filtro de Mes - Evitamos errores asegurándonos de extraer valores no nulos y de ordenarlos de forma segura
+elif tipo_registro == "Préstamo Nuevo":
+    with st.sidebar.form("nuevo_prestamo", clear_on_submit=True):
+        p_fecha = st.date_input("Fecha Préstamo:", datetime.date.today())
+        p_deudor = st.text_input("¿A quién le prestas? (Nombre):", "")
+        p_cuenta_origen = st.selectbox("¿De qué cuenta sale el dinero?:", st.session_state.accounts_list)
+        p_monto = st.number_input("Monto Prestado (COP):", min_value=0.0, step=1000.0, format="%.0f")
+        
+        p_tipo_int = st.radio("¿Tiene Interés?:", ["Sin Interés", "Con Interés"])
+        p_tasa = st.number_input("Porcentaje de Interés (%):", min_value=0.0, max_value=100.0, value=0.0, step=0.5)
+        
+        boton_prestar = st.form_submit_button("Registrar Préstamo")
+
+        if boton_prestar:
+            if not p_deudor:
+                st.sidebar.error("Escribe el nombre del deudor.")
+            elif p_monto <= 0:
+                st.sidebar.error("El monto prestado debe ser mayor a 0.")
+            else:
+                monto_estimado = p_monto + (p_monto * (p_tasa / 100.0)) if p_tipo_int == "Con Interés" else p_monto
+                
+                # 1. Registrar préstamo en la tabla de préstamos
+                nuevo_p = {
+                    "fecha": p_fecha,
+                    "deudor": p_deudor,
+                    "monto_inicial": float(p_monto),
+                    "tasa_interes": float(p_tasa) if p_tipo_int == "Con Interés" else 0.0,
+                    "monto_total_estimado": float(monto_estimado),
+                    "monto_pagado": 0.0,
+                    "intereses_pagados_reales": 0.0,
+                    "cuenta_origen": p_cuenta_origen,
+                    "estado": "Pendiente"
+                }
+                df_prestamos = pd.concat([df_prestamos, pd.DataFrame([nuevo_p])], ignore_index=True)
+                df_prestamos.to_csv(PRESTAMOS_PATH, index=False)
+                st.session_state.prestamos = df_prestamos
+                
+                # Sincronizar préstamo en Supabase
+                try:
+                    supabase.table("prestamos").insert({
+                        "fecha": str(p_fecha),
+                        "deudor": p_deudor,
+                        "monto_inicial": float(p_monto),
+                        "tasa_interes": float(p_tasa) if p_tipo_int == "Con Interés" else 0.0,
+                        "monto_total_estimado": float(monto_estimado),
+                        "monto_pagado": 0.0,
+                        "intereses_pagados_reales": 0.0,
+                        "cuenta_origen": p_cuenta_origen,
+                        "estado": "Pendiente"
+                    }).execute()
+                except Exception as ex:
+                    pass
+                
+                # 2. Registrar salida/egreso en movimientos para afectar la cuenta elegida
+                fila_salida = {
+                    "fecha": p_fecha,
+                    "detalle": f"Préstamo otorgado a {p_deudor}",
+                    "cuenta": p_cuenta_origen,
+                    "debe": 0.0,
+                    "haber": float(p_monto)
+                }
+                df = pd.concat([df, pd.DataFrame([fila_salida])], ignore_index=True)
+                df.to_csv(DB_PATH, index=False)
+                st.session_state.transactions = df
+                
+                try:
+                    supabase.table("transacciones").insert({
+                        "fecha": str(p_fecha),
+                        "detalle": f"Préstamo otorgado a {p_deudor}",
+                        "cuenta": p_cuenta_origen,
+                        "debe": 0.0,
+                        "haber": float(p_monto)
+                    }).execute()
+                except Exception:
+                    pass
+                
+                st.sidebar.success(f"¡Préstamo de {p_monto:,.0f} COP registrado con éxito!")
+                st.rerun()
+
+elif tipo_registro == "Cobrar Préstamo":
+    # Mostrar solo préstamos pendientes o con saldo
+    prestamos_pendientes = df_prestamos[df_prestamos["estado"] == "Pendiente"]
+    if prestamos_pendientes.empty:
+        st.sidebar.warning("No hay préstamos pendientes por cobrar.")
+    else:
+        with st.sidebar.form("cobrar_prestamo", clear_on_submit=True):
+            opciones_p = prestamos_pendientes.apply(lambda r: f"{r['deudor']} (Inicial: {r['monto_inicial']:,.0f} | Pendiente: {r['monto_total_estimado'] - r['monto_pagado']:,.0f})", axis=1).tolist()
+            seleccion_idx = st.selectbox("Selecciona el préstamo:", range(len(prestamos_pendientes)), format_func=lambda x: opciones_p[x])
+            prestamo_seleccionado = prestamos_pendientes.iloc[seleccion_idx]
+            
+            c_fecha = st.date_input("Fecha del cobro:", datetime.date.today())
+            c_cuenta_destino = st.selectbox("¿A qué cuenta ingresa el pago?:", st.session_state.accounts_list)
+            
+            saldo_capital_pelt = prestamo_seleccionado["monto_inicial"] - prestamo_seleccionado["monto_pagado"]
+            c_capital = st.number_input("Monto abonado al Capital (COP):", min_value=0.0, max_value=float(saldo_capital_pelt), value=float(saldo_capital_pelt), step=1000.0, format="%.0f")
+            c_intereses = st.number_input("Intereses Recibidos Reales (Se redondea en Pesos COP exactos):", min_value=0.0, value=0.0, step=1000.0, format="%.0f")
+            
+            boton_cobrar = st.form_submit_button("Registrar Cobro")
+            
+            if boton_cobrar:
+                if c_capital <= 0 and c_intereses <= 0:
+                    st.sidebar.error("El abono de capital o los intereses deben ser mayores a 0.")
+                else:
+                    # Actualizar registro de préstamo local
+                    nuevo_pago = float(prestamo_seleccionado["monto_pagado"] + c_capital)
+                    nuevos_intereses = float(prestamo_seleccionado["intereses_pagados_reales"] + c_intereses)
+                    
+                    # Si ya pagó todo el capital, marcar como Pagado
+                    nuevo_estado = "Pagado" if nuevo_pago >= prestamo_seleccionado["monto_inicial"] else "Pendiente"
+                    
+                    idx_original = prestamo_seleccionado.name
+                    df_prestamos.at[idx_original, "monto_pagado"] = nuevo_pago
+                    df_prestamos.at[idx_original, "intereses_pagados_reales"] = nuevos_intereses
+                    df_prestamos.at[idx_original, "estado"] = nuevo_estado
+                    df_prestamos.to_csv(PRESTAMOS_PATH, index=False)
+                    st.session_state.prestamos = df_prestamos
+                    
+                    # Actualizar préstamo en Supabase
+                    try:
+                        p_id = prestamo_seleccionado["id"]
+                        supabase.table("prestamos").update({
+                            "monto_pagado": nuevo_pago,
+                            "intereses_pagados_reales": nuevos_intereses,
+                            "estado": nuevo_estado
+                        }).eq("id", p_id).execute()
+                    except Exception:
+                        pass
+                    
+                    # Registrar entradas en transacciones
+                    total_recibido = c_capital + c_intereses
+                    if total_recibido > 0:
+                        fila_entrada = {
+                            "fecha": c_fecha,
+                            "detalle": f"Abono préstamo de {prestamo_seleccionado['deudor']} (Cap: {c_capital:,.0f} | Int: {c_intereses:,.0f})",
+                            "cuenta": c_cuenta_destino,
+                            "debe": float(total_recibido),
+                            "haber": 0.0
+                        }
+                        df = pd.concat([df, pd.DataFrame([fila_entrada])], ignore_index=True)
+                        df.to_csv(DB_PATH, index=False)
+                        st.session_state.transactions = df
+                        
+                        try:
+                            supabase.table("transacciones").insert({
+                                "fecha": str(c_fecha),
+                                "detalle": f"Abono préstamo de {prestamo_seleccionado['deudor']} (Cap: {c_capital:,.0f} | Int: {c_intereses:,.0f})",
+                                "cuenta": c_cuenta_destino,
+                                "debe": float(total_recibido),
+                                "haber": 0.0
+                            }).execute()
+                        except Exception:
+                            pass
+                    
+                    st.sidebar.success("¡Cobro registrado y dinero sumado exitosamente a la cuenta!")
+                    st.rerun()
+
+# Filtro de Mes
 if not df.empty and df["mes_auto"].notna().any():
     valid_months = df["mes_auto"].dropna().unique()
     months = sorted(list(valid_months))
@@ -241,8 +425,7 @@ else:
 cuentas = st.session_state.accounts_list
 st.markdown(f"### 📊 Estado de tus Cuentas (COP) - {selected_month.strftime('%B %Y').capitalize() if hasattr(selected_month, 'strftime') else str(selected_month)}")
 
-cols = st.columns(len(cuentas)) if len(cuentas) > 0 else []
-total_capital = 0.0
+cols = st.columns(len(cuentas)) if len(cuentas) > 0 else []	otal_capital = 0.0
 
 for idx, cta in enumerate(cuentas):
     debe_ant = df_before[df_before["cuenta"] == cta]["debe"].sum() if not df_before.empty else 0.0
@@ -274,6 +457,33 @@ st.markdown(f"""
     <div style="font-size: 2.2em; font-weight: bold; color: #0d47a1;">{total_capital:,.0f} COP</div>
 </div>
 """, unsafe_allow_html=True)
+
+# PANEL DE CONTROL DE PRÉSTAMOS ACTIVOS
+st.divider()
+st.markdown("### 👥 Control y Seguimiento de Préstamos")
+if df_prestamos.empty:
+    st.info("No tienes registros de préstamos todavía.")
+else:
+    st.markdown("Lista de personas a las que has prestado dinero, intereses generados y estado actual:")
+    
+    # Presentar tabla más amigable para el usuario
+    df_prestamos_ver = df_prestamos.copy()
+    df_prestamos_ver["Pendiente de Cobro"] = df_prestamos_ver["monto_inicial"] - df_prestamos_ver["monto_pagado"]
+    st.dataframe(
+        df_prestamos_ver[["fecha", "deudor", "monto_inicial", "tasa_interes", "monto_pagado", "Pendiente de Cobro", "intereses_pagados_reales", "cuenta_origen", "estado"]],
+        use_container_width=True,
+        column_config={
+            "fecha": "Fecha Préstamo",
+            "deudor": "Deudor",
+            "monto_inicial": st.column_config.NumberColumn("Monto Inicial", format="$ %d"),
+            "tasa_interes": "Interés (%)",
+            "monto_pagado": st.column_config.NumberColumn("Capital Abonado", format="$ %d"),
+            "Pendiente de Cobro": st.column_config.NumberColumn("Capital Pendiente", format="$ %d"),
+            "intereses_pagados_reales": st.column_config.NumberColumn("Intereses Recaudados", format="$ %d"),
+            "cuenta_origen": "Cuenta Origen",
+            "estado": "Estado"
+        }
+    )
 
 st.divider()
 
