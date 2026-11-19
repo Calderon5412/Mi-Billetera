@@ -12,7 +12,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # ==========================================================
 # 🔑 CONFIGURA AQUÍ TU CÓDIGO DE ACCESO SEGURO
 # ==========================================================
-CODIGO_ACCESO = "1234"  # Cambia esto por tu PIN o contraseña favorita
+CODIGO_ACCESO = "963"  # Cambia esto por tu PIN o contraseña favorita
 # ==========================================================
 
 # Configuración inicial de la página
@@ -216,9 +216,10 @@ elif tipo_registro == "Transferencia entre Cuentas":
                 except Exception as ex:
                     st.sidebar.error(f"Error al sincronizar la transferencia con Supabase: {ex}")
 
-# Filtro de Mes
+# Filtro de Mes - Evitamos errores asegurándonos de extraer valores no nulos y de ordenarlos de forma segura
 if not df.empty and df["mes_auto"].notna().any():
-    months = sorted(df["mes_auto"].unique())
+    valid_months = df["mes_auto"].dropna().unique()
+    months = sorted(list(valid_months))
 else:
     months = [datetime.date(datetime.date.today().year, datetime.date.today().month, 1)]
 
