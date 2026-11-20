@@ -178,22 +178,10 @@ if tipo_registro == "Movimiento Simple":
         if boton_guardar:
             if nuevo_detalle == "":
                 st.sidebar.error("Por favor ingresa un detalle.")
-            else:
+            else: 
                 debe_val = float(monto) if "Ingreso" in tipo_mov else 0.0
                 haber_val = float(monto) if "Egreso" in tipo_mov else 0.0
-                nueva_fila = {
-                    "fecha": nueva_fecha,
-                    "detalle": nuevo_detalle,
-                    "cuenta": nueva_cuenta,
-                    "debe": debe_val,
-                    "haber": haber_val
-                }
-                df = pd.concat([df, pd.DataFrame([nueva_fila])], ignore_index=True)
-                df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce").dt.date
-                df = df.dropna(subset=["fecha"])
-                df.to_csv(DB_PATH, index=False)
-                st.session_state.transactions = df
-
+                
                 if supabase:
                     data = {
                         "fecha": str(nueva_fecha),
@@ -203,12 +191,25 @@ if tipo_registro == "Movimiento Simple":
                         "detalle": nuevo_detalle,
                     }
                     try:
-                        supabase.table("transacciones").insert(data).execute()
+                        res = supabase.table("transacciones").insert(data).execute()
+                        if res.data:
+                            # Usar el ID real generado en la nube para el df local
+                            nueva_fila = res.data[0]
+                        else:
+                            nueva_fila = {"fecha": nueva_fecha, "detalle": nuevo_detalle, "cuenta": nueva_cuenta, "debe": debe_val, "haber": haber_val}
                         st.sidebar.success("¡Registrado con éxito en la nube y localmente!")
                     except Exception as e:
                         st.sidebar.error(f"❌ Error al sincronizar con Supabase: {e}")
+                        nueva_fila = {"fecha": nueva_fecha, "detalle": nuevo_detalle, "cuenta": nueva_cuenta, "debe": debe_val, "haber": haber_val}
                 else:
+                    nueva_fila = {"fecha": nueva_fecha, "detalle": nuevo_detalle, "cuenta": nueva_cuenta, "debe": debe_val, "haber": haber_val}
                     st.sidebar.warning("⚠️ Solo guardado local (Los cambios se perderán al reiniciar la app)")
+                
+                df = pd.concat([df, pd.DataFrame([nueva_fila])], ignore_index=True)
+                df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce").dt.date
+                df = df.dropna(subset=["fecha"])
+                df.to_csv(DB_PATH, index=False)
+                st.session_state.transactions = df
                 st.rerun()
 
 elif tipo_registro == "Transferencia entre Cuentas":
@@ -226,50 +227,44 @@ elif tipo_registro == "Transferencia entre Cuentas":
                 st.sidebar.error("El monto debe ser mayor a 0.")
             else:
                 monto_val = float(trans_monto)
-                fila_salida = {
-                    "fecha": trans_fecha,
-                    "detalle": f"Transferencia enviada a {cuenta_destino}",
-                    "cuenta": cuenta_origen,
-                    "debe": 0.0,
-                    "haber": monto_val
-                }
-                fila_entrada = {
-                    "fecha": trans_fecha,
-                    "detalle": f"Transferencia recibida desde {cuenta_origen}",
-                    "cuenta": cuenta_destino,
-                    "debe": monto_val,
-                    "haber": 0.0
-                }
-                df = pd.concat([df, pd.DataFrame([fila_salida, fila_entrada])], ignore_index=True)
+                datos_supabase = [
+                    {
+                        "fecha": str(trans_fecha),
+                        "detalle": f"Transferencia enviada a {cuenta_destino}",
+                        "cuenta": cuenta_origen,
+                        "debe": 0.0,
+                        "haber": monto_val
+                    },
+                    {
+                        "fecha": str(trans_fecha),
+                        "detalle": f"Transferencia recibida desde {cuenta_origen}",
+                        "cuenta": cuenta_destino,
+                        "debe": monto_val,
+                        "haber": 0.0
+                    }
+                ]
+                
+                filas_locales = []
+                if supabase:
+                    try:
+                        res = supabase.table("transacciones").insert(datos_supabase).execute()
+                        if res.data:
+                            filas_locales = res.data
+                        else:
+                            filas_locales = datos_supabase
+                        st.sidebar.success("¡Transferencia registrada en la nube y localmente!")
+                    except Exception as e:
+                        st.sidebar.error(f"❌ Error al guardar transferencia en Supabase: {e}")
+                        filas_locales = datos_supabase
+                else:
+                    filas_locales = datos_supabase
+                    st.sidebar.warning("⚠️ Guardado localmente (Sin conexión de respaldo)")
+                
+                df = pd.concat([df, pd.DataFrame(filas_locales)], ignore_index=True)
                 df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce").dt.date
                 df = df.dropna(subset=["fecha"])
                 df.to_csv(DB_PATH, index=False)
                 st.session_state.transactions = df
-
-                if supabase:
-                    datos_supabase = [
-                        {
-                            "fecha": str(trans_fecha),
-                            "detalle": f"Transferencia enviada a {cuenta_destino}",
-                            "cuenta": cuenta_origen,
-                            "debe": 0.0,
-                            "haber": monto_val
-                        },
-                        {
-                            "fecha": str(trans_fecha),
-                            "detalle": f"Transferencia recibida desde {cuenta_origen}",
-                            "cuenta": cuenta_destino,
-                            "debe": monto_val,
-                            "haber": 0.0
-                        }
-                    ]
-                    try:
-                        supabase.table("transacciones").insert(datos_supabase).execute()
-                        st.sidebar.success("¡Transferencia registrada en la nube y localmente!")
-                    except Exception as e:
-                        st.sidebar.error(f"❌ Error al guardar transferencia en Supabase: {e}")
-                else:
-                    st.sidebar.warning("⚠️ Guardado localmente (Sin conexión de respaldo)")
                 st.rerun()
 
 elif tipo_registro == "Préstamo Nuevo":
@@ -280,7 +275,7 @@ elif tipo_registro == "Préstamo Nuevo":
         p_monto = st.number_input("Monto Prestado (COP):", min_value=0.0, step=1000.0, format="%.0f")
 
         p_tipo_int = st.sidebar.radio("¿Tiene Interés?:", ["Sin Interés", "Con Interés"])
-        p_tasa = st.number_input("Porcentaje de Interés (%):", min_value=0.0, max_value=100.0, value=0.0, step=0.5)
+        p_tasa = st.number_input("Porcentaje de Interés (%):", min_value=0.0, max_value=100.0, value=0.0, step=0.5) 
 
         boton_prestar = st.form_submit_button("Registrar Préstamo")
 
@@ -291,7 +286,6 @@ elif tipo_registro == "Préstamo Nuevo":
                 st.sidebar.error("El monto prestado debe ser mayor a 0.")
             else:
                 monto_estimado = p_monto + (p_monto * (p_tasa / 100.0)) if p_tipo_int == "Con Interés" else p_monto
-
                 nuevo_p = {
                     "fecha": p_fecha,
                     "deudor": p_deudor,
@@ -303,13 +297,10 @@ elif tipo_registro == "Préstamo Nuevo":
                     "cuenta_origen": p_cuenta_origen,
                     "estado": "Pendiente"
                 }
-                df_prestamos = pd.concat([df_prestamos, pd.DataFrame([nuevo_p])], ignore_index=True)
-                df_prestamos.to_csv(PRESTAMOS_PATH, index=False)
-                st.session_state.prestamos = df_prestamos
-
+                
                 if supabase:
                     try:
-                        supabase.table("prestamos").insert({
+                        res_p = supabase.table("prestamos").insert({
                             "fecha": str(p_fecha),
                             "deudor": p_deudor,
                             "monto_inicial": float(p_monto),
@@ -320,9 +311,15 @@ elif tipo_registro == "Préstamo Nuevo":
                             "cuenta_origen": p_cuenta_origen,
                             "estado": "Pendiente"
                         }).execute()
+                        if res_p.data:
+                            nuevo_p = res_p.data[0]
                         st.sidebar.success(f"¡Préstamo de {p_monto:,.0f} COP registrado en la nube!")
                     except Exception as e:
                         st.sidebar.error(f"❌ Error al registrar préstamo en Supabase: {e}")
+
+                df_prestamos = pd.concat([df_prestamos, pd.DataFrame([nuevo_p])], ignore_index=True)
+                df_prestamos.to_csv(PRESTAMOS_PATH, index=False)
+                st.session_state.prestamos = df_prestamos
 
                 # Registrar egreso automático de transacciones
                 fila_salida = {
@@ -332,21 +329,23 @@ elif tipo_registro == "Préstamo Nuevo":
                     "debe": 0.0,
                     "haber": float(p_monto)
                 }
-                df = pd.concat([df, pd.DataFrame([fila_salida])], ignore_index=True)
-                df.to_csv(DB_PATH, index=False)
-                st.session_state.transactions = df
-
                 if supabase:
                     try:
-                        supabase.table("transacciones").insert({
+                        res_t = supabase.table("transacciones").insert({
                             "fecha": str(p_fecha),
                             "detalle": f"Préstamo otorgado a {p_deudor}",
                             "cuenta": p_cuenta_origen,
                             "debe": 0.0,
                             "haber": float(p_monto)
                         }).execute()
+                        if res_t.data:
+                            fila_salida = res_t.data[0]
                     except Exception:
                         pass
+                
+                df = pd.concat([df, pd.DataFrame([fila_salida])], ignore_index=True)
+                df.to_csv(DB_PATH, index=False)
+                st.session_state.transactions = df
                 st.rerun()
 
 elif tipo_registro == "Cobrar Préstamo":
@@ -373,7 +372,7 @@ elif tipo_registro == "Cobrar Préstamo":
                     st.sidebar.error("El abono de capital o los intereses deben ser mayores a 0.")
                 else:
                     nuevo_pago = float(prestamo_seleccionado["monto_pagado"] + c_capital)
-                    nuevos_intereses = float(prestamo_seleccionado["intereses_pagados_reales"] + c_intereses)
+                    nuevos_intereses = float(prestamo_seleccionado["intereses_pagados_reales" ] + c_intereses)
                     nuevo_estado = "Pagado" if nuevo_pago >= prestamo_seleccionado["monto_inicial"] else "Pendiente"
 
                     idx_original = prestamo_seleccionado.name
@@ -403,21 +402,23 @@ elif tipo_registro == "Cobrar Préstamo":
                             "debe": float(total_recibido),
                             "haber": 0.0
                         }
-                        df = pd.concat([df, pd.DataFrame([fila_entrada])], ignore_index=True)
-                        df.to_csv(DB_PATH, index=False)
-                        st.session_state.transactions = df
-
                         if supabase:
                             try:
-                                supabase.table("transacciones").insert({
+                                res_t = supabase.table("transacciones").insert({
                                     "fecha": str(c_fecha),
                                     "detalle": f"Abono préstamo de {prestamo_seleccionado['deudor']} (Cap: {c_capital:,.0f} | Int: {c_intereses:,.0f})",
                                     "cuenta": c_cuenta_destino,
                                     "debe": float(total_recibido),
                                     "haber": 0.0
                                 }).execute()
+                                if res_t.data:
+                                    fila_entrada = res_t.data[0]
                             except Exception:
                                 pass
+                        
+                        df = pd.concat([df, pd.DataFrame([fila_entrada])], ignore_index=True)
+                        df.to_csv(DB_PATH, index=False)
+                        st.session_state.transactions = df
                     st.sidebar.success("¡Cobro registrado con éxito!")
                     st.rerun()
 
@@ -458,7 +459,7 @@ for idx, cta in enumerate(cuentas):
     saldo_ini = debe_ant - haber_ant
 
     debe_mes = df_month[df_month["cuenta"] == cta]["debe"].sum() if not df_month.empty else 0.0
-    haber_mes = df_month[df_month["cuenta"] == cta]["haber"].sum() if not df_month.empty else 0.0
+    haber_mes = df_month[df_month["cuenta" ] == cta]["haber"].sum() if not df_month.empty else 0.0
 
     saldo_final = saldo_ini + debe_mes - haber_mes
     total_capital += saldo_final
@@ -523,11 +524,20 @@ else:
                 edited_prestamos_df[col] = None
 
         df_p_guardar = edited_prestamos_df[columnas_guardar]
-        df_p_guardar.to_csv(PRESTAMOS_PATH, index=False)
-        st.session_state.prestamos = df_p_guardar
-
+        
+        # Sincronización con eliminación
         if supabase:
             try:
+                # Obtener IDs actuales de Supabase
+                db_items = supabase.table("prestamos").select("id").execute()
+                if db_items.data:
+                    db_ids = {r["id"] for r in db_items.data}
+                    # Identificar IDs editados que ya no existen en la interfaz
+                    current_ids = set(df_p_guardar["id"].dropna().unique())
+                    to_delete = db_ids - current_ids
+                    for del_id in to_delete:
+                        supabase.table("prestamos").delete().eq("id", del_id).execute()
+                
                 # Sincronización masiva rápida
                 for _, row in df_p_guardar.iterrows():
                     row_data = row.to_dict()
@@ -535,7 +545,6 @@ else:
                     if pd.notna(row_data.get("id")):
                         supabase.table("prestamos").upsert(row_data).execute()
                     else:
-                        # Si es nuevo fila sin ID aún
                         row_data.pop("id", None)
                         supabase.table("prestamos").insert(row_data).execute()
                 st.success("¡La base de datos de préstamos se sincronizó correctamente con la nube!")
@@ -543,6 +552,9 @@ else:
                 st.error(f"❌ Error al actualizar préstamos en Supabase: {e}")
         else:
             st.success("¡La base de datos de préstamos ha sido actualizada temporalmente en el caché local!")
+        
+        df_p_guardar.to_csv(PRESTAMOS_PATH, index=False)
+        st.session_state.prestamos = df_p_guardar
         st.rerun()
 
 st.divider()
@@ -569,11 +581,22 @@ if st.button("💾 Aplicar y Guardar Cambios en Base de Datos"):
     edited_df["debe"] = pd.to_numeric(edited_df["debe"], errors='coerce').fillna(0.0)
     edited_df["haber"] = pd.to_numeric(edited_df["haber"], errors='coerce').fillna(0.0)
 
-    edited_df.to_csv(DB_PATH, index=False)
-    st.session_state.transactions = edited_df
-
     if supabase:
         try:
+            # Obtener registros actuales de la nube
+            db_items = supabase.table("transacciones").select("id").execute()
+            if db_items.data:
+                db_ids = {r["id"] for r in db_items.data}
+                current_ids = set() 
+                if "id" in edited_df.columns:
+                    current_ids = set(edited_df["id"].dropna().unique())
+                to_delete = db_ids - current_ids
+                
+                # Borrar de Supabase los que ya no están
+                for del_id in to_delete:
+                     supabase.table("transacciones").delete().eq("id", del_id).execute()
+            
+            # Guardar/Modificar restantes
             for _, row in edited_df.iterrows():
                 row_data = row.to_dict()
                 row_data["fecha"] = str(row_data["fecha"])
@@ -587,4 +610,7 @@ if st.button("💾 Aplicar y Guardar Cambios en Base de Datos"):
             st.error(f"❌ Error al escribir cambios en Supabase: {e}")
     else:
         st.success("¡Cambios aplicados localmente de forma temporal!")
+
+    edited_df.to_csv(DB_PATH, index=False)
+    st.session_state.transactions = edited_df
     st.rerun()
