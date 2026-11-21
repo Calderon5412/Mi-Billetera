@@ -347,7 +347,7 @@ elif tipo_registro == "Cobrar Préstamo":
     prestamos_pendientes = df_prestamos[df_prestamos["estado"] == "Pendiente"]
     if prestamos_pendientes.empty:
         st.sidebar.warning("No hay préstamos pendientes por cobrar.")
-    else: 
+    else:
         with st.sidebar.form("cobrar_prestamo", clear_on_submit=True):
             opciones_p = prestamos_pendientes.apply(lambda r: f"{r['deudor']} (Inicial: {r['monto_inicial']:,.0f} | Pendiente: {r['monto_inicial'] - r['monto_pagado']:,.0f})", axis=1).tolist()
             seleccion_idx = st.selectbox("Selecciona el préstamo:", range(len(prestamos_pendientes)), format_func=lambda x: opciones_p[x])
