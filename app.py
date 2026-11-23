@@ -427,11 +427,6 @@ if not df.empty and df["mes_auto"].notna().any():
 else:
     months = [datetime.date(datetime.date.today().year, datetime.date.today().month, 1)]
 
-selected_month = st.sidebar.selectbox(
-    "📅 Filtrar por Mes:",
-    options=months,
-    format_func=lambda x: x.strftime("%B %Y").capitalize() if hasattr(x, 'strftime') else str(x)
-)
 col_titulo, col_filtro = st.columns([3, 1])
 
 with col_filtro:
