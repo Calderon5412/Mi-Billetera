@@ -516,6 +516,8 @@ if df_prestamos.empty:
     st.info("No tienes registros de préstamos todavía.")
 else:
     df_prestamos_ver = df_prestamos.copy()
+    df_prestamos_ver["fecha"] = pd.to_datetime(df_prestamos_ver["fecha"], errors="coerce").dt.date
+    df_prestamos_ver = df_prestamos_ver.sort_values(by="fecha", ascending=False)
     df_prestamos_ver["Pendiente de Cobro"] = df_prestamos_ver["monto_inicial"] - df_prestamos_ver["monto_pagado"]
 
     edited_prestamos_df = st.data_editor(
