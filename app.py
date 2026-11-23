@@ -459,7 +459,8 @@ if not df_prestamos.empty:
 
 # Panel de Cuentas T
 cuentas = st.session_state.accounts_list
-st.markdown(f"### 📊 Estado de tus Cuentas (COP) - {selected_month.strftime('%B %Y').capitalize() if hasattr(selected_month, 'strftime') else str(selected_month)}")
+with col_titulo:
+    st.markdown(f"### 📊 Estado de tus Cuentas (COP) - {selected_month.strftime('%B %Y').capitalize() if hasattr(selected_month, 'strftime') else str(selected_month)}")
 
 # Agregar espacio para mostrar la tarjeta de préstamos dentro de la visualización de cuentas
 num_columnas = len(cuentas) + 1
