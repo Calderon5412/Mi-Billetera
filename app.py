@@ -118,7 +118,7 @@ df = st.session_state.transactions.copy()
 df_prestamos = st.session_state.prestamos.copy()
 
 # Lista de cuentas dinámicas por defecto
-cuentas_defecto = ["Efectivo", "Banco", "Nequi", "Nu", "BBVA", "Pibank"]
+cuentas_defecto = ["Efectivo", "Nequi", "Nu", "BBVA", "Pibank"]
 if 'accounts_list' not in st.session_state:
     if not df.empty:
         cuentas_existentes = list(df["cuenta"].dropna().unique())
@@ -496,7 +496,7 @@ patrimonio_total = total_capital_bancos + total_prestado_pendiente
 
 st.markdown(f"""
 <div class="card" style="background-color: #e3f2fd;">
-    <div class="metric-title" style="color: #0d47a1;">💎 PATRIMONIO TOTAL DISPONIBLE (GLOBAL)</div>
+    <div class="metric-title" style="color: #2636d1;">💎 PATRIMONIO TOTAL DISPONIBLE (GLOBAL)</div>
     <div style="font-size: 2.2em; font-weight: bold; color: #0d47a1;">{patrimonio_total:,.0f} COP</div>
     <div style="font-size: 0.85em; color: #1565c0;">(Cuentas: {total_capital_bancos:,.0f} COP + Préstamos por Cobrar: {total_prestado_pendiente:,.0f} COP)</div>
 </div>
