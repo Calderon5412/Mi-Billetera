@@ -420,23 +420,24 @@ elif tipo_registro == "Cobrar Préstamo":
 # =========================================================================
 # VISUALIZACIÓN DE TABLEROS Y MÉTRICAS
 # =========================================================================
-# Filtro de Mes
+# Filtro de Mes - Se ordena de forma descendente (mes más reciente primero por defecto)
 if not df.empty and df["mes_auto"].notna().any():
     valid_months = df["mes_auto"].dropna().unique()
     months = sorted(list(valid_months), reverse=True)
 else:
     months = [datetime.date(datetime.date.today().year, datetime.date.today().month, 1)]
 
+# Diseñamos una sección de cabecera con columnas para el filtro discreto en el panel principal
 col_titulo, col_filtro = st.columns([3, 1])
 
 with col_filtro:
     selected_month = st.selectbox(
-        "📅Seleccionar Mes:",
+        "📅 Seleccionar Mes:",
         options=months,
         format_func=lambda x: x.strftime("%B %Y").capitalize() if hasattr(x, 'strftime') else str(x),
         label_visibility="collapsed"
     )
-    
+
 # Segmentación de datos
 if not df.empty:
     df_before = df[df["mes_auto"] < selected_month]
@@ -454,6 +455,7 @@ if not df_prestamos.empty:
 
 # Panel de Cuentas T
 cuentas = st.session_state.accounts_list
+
 with col_titulo:
     st.markdown(f"### 📊 Estado de tus Cuentas (COP) - {selected_month.strftime('%B %Y').capitalize() if hasattr(selected_month, 'strftime') else str(selected_month)}")
 
@@ -515,6 +517,7 @@ st.markdown("### 👥 Control y Seguimiento de Préstamos")
 if df_prestamos.empty:
     st.info("No tienes registros de préstamos todavía.")
 else:
+    # Ordenamos los préstamos de forma descendente por fecha para ver primero los más recientes
     df_prestamos_ver = df_prestamos.copy()
     df_prestamos_ver["fecha"] = pd.to_datetime(df_prestamos_ver["fecha"], errors="coerce").dt.date
     df_prestamos_ver = df_prestamos_ver.sort_values(by="fecha", ascending=False)
@@ -597,10 +600,10 @@ edited_df = st.data_editor(
 )
 
 if st.button("💾 Aplicar y Guardar Cambios en Base de Datos"):
-    edited_df["fecha"] = pd.to_datetime(edited_df["fecha"], errors='coerce').dt.date
+    edited_df["fecha"] = pd.to_datetime(edited_df["fecha"], errors=’coerce’).dt.date
     edited_df = edited_df.dropna(subset=["fecha"])
-    edited_df["debe"] = pd.to_numeric(edited_df["debe"], errors='coerce').fillna(0.0)
-    edited_df["haber"] = pd.to_numeric(edited_df["haber"], errors='coerce').fillna(0.0)
+    edited_df["debe"] = pd.to_numeric(edited_df["debe"], errors=’coerce’).fillna(0.0)
+    edited_df["haber"] = pd.to_numeric(edited_df["haber"], errors=’coerce’).fillna(0.0)
 
     if supabase:
         try:
