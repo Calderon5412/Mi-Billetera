@@ -423,7 +423,7 @@ elif tipo_registro == "Cobrar Préstamo":
 # Filtro de Mes
 if not df.empty and df["mes_auto"].notna().any():
     valid_months = df["mes_auto"].dropna().unique()
-    months = sorted(list(valid_months))
+    months = sorted(list(valid_months), reverse=True)
 else:
     months = [datetime.date(datetime.date.today().year, datetime.date.today().month, 1)]
 
