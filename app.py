@@ -517,10 +517,13 @@ st.markdown("### 👥 Control y Seguimiento de Préstamos")
 if df_prestamos.empty:
     st.info("No tienes registros de préstamos todavía.")
 else:
-    # Ordenamos los préstamos de forma descendente por fecha para ver primero los más recientes
+    # Usamos conversión explícita a formato de tiempo para garantizar ordenamiento cronológico preciso
     df_prestamos_ver = df_prestamos.copy()
-    df_prestamos_ver["fecha"] = pd.to_datetime(df_prestamos_ver["fecha"], errors="coerce").dt.date
-    df_prestamos_ver = df_prestamos_ver.sort_values(by="fecha", ascending=False)
+    df_prestamos_ver["fecha_dt"] = pd.to_datetime(df_prestamos_ver["fecha"], errors="coerce")
+    df_prestamos_ver = df_prestamos_ver.sort_values(by="fecha_dt", ascending=False)
+    df_prestamos_ver["fecha"] = df_prestamos_ver["fecha_dt"].dt.date
+    df_prestamos_ver = df_prestamos_ver.drop(columns=["fecha_dt"])
+
     df_prestamos_ver["Pendiente de Cobro"] = df_prestamos_ver["monto_inicial"] - df_prestamos_ver["monto_pagado"]
 
     edited_prestamos_df = st.data_editor(
@@ -600,10 +603,10 @@ edited_df = st.data_editor(
 )
 
 if st.button("💾 Aplicar y Guardar Cambios en Base de Datos"):
-    edited_df["fecha"] = pd.to_datetime(edited_df["fecha"], errors=’coerce’).dt.date
+    edited_df["fecha"] = pd.to_datetime(edited_df["fecha"], errors='coerce').dt.date
     edited_df = edited_df.dropna(subset=["fecha"])
-    edited_df["debe"] = pd.to_numeric(edited_df["debe"], errors=’coerce’).fillna(0.0)
-    edited_df["haber"] = pd.to_numeric(edited_df["haber"], errors=’coerce’).fillna(0.0)
+    edited_df["debe"] = pd.to_numeric(edited_df["debe"], errors='coerce').fillna(0.0)
+    edited_df["haber"] = pd.to_numeric(edited_df["haber"], errors='coerce').fillna(0.0)
 
     if supabase:
         try:
