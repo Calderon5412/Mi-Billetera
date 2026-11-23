@@ -517,72 +517,92 @@ st.markdown("### 👥 Control y Seguimiento de Préstamos")
 if df_prestamos.empty:
     st.info("No tienes registros de préstamos todavía.")
 else:
-    # Usamos conversión explícita a formato de tiempo para garantizar ordenamiento cronológico preciso
+    # Aplicamos filtro de fecha en préstamos según el 'selected_month' escogido dinámicamente
     df_prestamos_ver = df_prestamos.copy()
     df_prestamos_ver["fecha_dt"] = pd.to_datetime(df_prestamos_ver["fecha"], errors="coerce")
-    df_prestamos_ver = df_prestamos_ver.sort_values(by="fecha_dt", ascending=False)
-    df_prestamos_ver["fecha"] = df_prestamos_ver["fecha_dt"].dt.date
-    df_prestamos_ver = df_prestamos_ver.drop(columns=["fecha_dt"])
-
-    df_prestamos_ver["Pendiente de Cobro"] = df_prestamos_ver["monto_inicial"] - df_prestamos_ver["monto_pagado"]
-
-    edited_prestamos_df = st.data_editor(
-        df_prestamos_ver,
-        num_rows="dynamic",
-        use_container_width=True,
-        column_config={
-            "fecha": st.column_config.DateColumn("Fecha Préstamo"),
-            "deudor": st.column_config.TextColumn("Deudor"),
-            "monto_inicial": st.column_config.NumberColumn("Monto Inicial", format="$ %d"),
-            "tasa_interes": st.column_config.NumberColumn("Interés (%)"),
-            "monto_pagado": st.column_config.NumberColumn("Capital Abonado", format="$ %d"),
-            "Pendiente de Cobro": st.column_config.NumberColumn("Capital Pendiente (Calculado)", format="$ %d", disabled=True),
-            "intereses_pagados_reales": st.column_config.NumberColumn("Intereses Recaudados", format="$ %d"),
-            "cuenta_origen": st.column_config.TextColumn("Cuenta Origen"),
-            "estado": st.column_config.SelectboxColumn("Estado", options=["Pendiente", "Pagado"])
-        },
-        key="prestamos_editor"
+    
+    # Crear columna auxiliar del mes para filtrar de manera dinámica
+    df_prestamos_ver["mes_prestamo"] = df_prestamos_ver["fecha_dt"].apply(
+        lambda x: datetime.date(x.year, x.month, 1) if pd.notnull(x) else None
     )
+    
+    # Filtrar el dataframe de préstamos por el mes seleccionado en la cabecera principal
+    df_prestamos_ver = df_prestamos_ver[df_prestamos_ver["mes_prestamo"] == selected_month]
 
-    if st.button("💾 Guardar Cambios en Préstamos"):
-        edited_prestamos_df["fecha"] = pd.to_datetime(edited_prestamos_df["fecha"], errors='coerce').dt.date
-        edited_prestamos_df = edited_prestamos_df.dropna(subset=["fecha"])
-        edited_prestamos_df["monto_total_estimado"] = edited_prestamos_df["monto_inicial"] + (edited_prestamos_df["monto_inicial" ] * (edited_prestamos_df["tasa_interes"] / 100.0))
+    if df_prestamos_ver.empty:
+        st.info(f"No hay préstamos registrados en el mes de {selected_month.strftime('%B %Y').capitalize() if hasattr(selected_month, 'strftime') else str(selected_month)}.")
+    else:
+        df_prestamos_ver = df_prestamos_ver.sort_values(by="fecha_dt", ascending=False)
+        df_prestamos_ver["fecha"] = df_prestamos_ver["fecha_dt"].dt.date
+        df_prestamos_ver = df_prestamos_ver.drop(columns=["fecha_dt", "mes_prestamo"])
+        df_prestamos_ver["Pendiente de Cobro"] = df_prestamos_ver["monto_inicial"] - df_prestamos_ver["monto_pagado"]
 
-        columnas_guardar = ["id", "fecha", "deudor", "monto_inicial", "tasa_interes", "monto_total_estimado", "monto_pagado", "intereses_pagados_reales", "cuenta_origen", "estado"]
-        for col in columnas_guardar:
-            if col not in edited_prestamos_df.columns:
-                edited_prestamos_df[col] = None
+        edited_prestamos_df = st.data_editor(
+            df_prestamos_ver,
+            num_rows="dynamic",
+            use_container_width=True,
+            column_config={
+                "fecha": st.column_config.DateColumn("Fecha Préstamo"),
+                "deudor": st.column_config.TextColumn("Deudor"),
+                "monto_inicial": st.column_config.NumberColumn("Monto Inicial", format="$ %d"),
+                "tasa_interes": st.column_config.NumberColumn("Interés (%)"),
+                "monto_pagado": st.column_config.NumberColumn("Capital Abonado", format="$ %d"),
+                "Pendiente de Cobro": st.column_config.NumberColumn("Capital Pendiente (Calculado)", format="$ %d", disabled=True),
+                "intereses_pagados_reales": st.column_config.NumberColumn("Intereses Recaudados", format="$ %d"),
+                "cuenta_origen": st.column_config.TextColumn("Cuenta Origen"),
+                "estado": st.column_config.SelectboxColumn("Estado", options=["Pendiente", "Pagado"])
+            },
+            key="prestamos_editor"
+        )
 
-        df_p_guardar = edited_prestamos_df[columnas_guardar]
+        if st.button("💾 Guardar Cambios en Préstamos"):
+            edited_prestamos_df["fecha"] = pd.to_datetime(edited_prestamos_df["fecha"], errors='coerce').dt.date
+            edited_prestamos_df = edited_prestamos_df.dropna(subset=["fecha"])
+            edited_prestamos_df["monto_total_estimado"] = edited_prestamos_df["monto_inicial"] + (edited_prestamos_df["monto_inicial" ] * (edited_prestamos_df["tasa_interes"] / 100.0))
 
-        if supabase:
-            try:
-                db_items = supabase.table("prestamos").select("id").execute()
-                if db_items.data:
-                    db_ids = {r["id"] for r in db_items.data}
-                    current_ids = set(df_p_guardar["id"].dropna().unique())
-                    to_delete = db_ids - current_ids
-                    for del_id in to_delete:
-                        supabase.table("prestamos").delete().eq("id", del_id).execute()
+            columnas_guardar = ["id", "fecha", "deudor", "monto_inicial", "tasa_interes", "monto_total_estimado", "monto_pagado", "intereses_pagados_reales", "cuenta_origen", "estado"]
+            for col in columnas_guardar:
+                if col not in edited_prestamos_df.columns:
+                    edited_prestamos_df[col] = None
 
-                for _, row in df_p_guardar.iterrows():
-                    row_data = row.to_dict()
-                    row_data["fecha"] = str(row_data["fecha"])
-                    if pd.notna(row_data.get("id")):
-                        supabase.table("prestamos").upsert(row_data).execute()
-                    else:
-                        row_data.pop("id", None)
-                        supabase.table("prestamos").insert(row_data).execute()
-                st.success("¡La base de datos de préstamos se sincronizó correctamente con la nube!")
-            except Exception as e:
-                st.error(f"❌ Error al actualizar préstamos en Supabase: {e}")
-        else:
-            st.success("¡La base de datos de préstamos ha sido actualizada temporalmente en el caché local!")
+            # Obtenemos los cambios hechos a las filas mostradas y actualizamos los registros originales de la sesión
+            df_actual_completo = df_prestamos.copy()
+            for _, row_edit in edited_prestamos_df.iterrows():
+                if pd.notna(row_edit.get("id")):
+                    df_actual_completo.loc[df_actual_completo["id"] == row_edit["id"], columnas_guardar] = row_edit[columnas_guardar].values
+                else:
+                    # Si es nuevo, lo anexamos
+                    df_actual_completo = pd.concat([df_actual_completo, pd.DataFrame([row_edit[columnas_guardar]])], ignore_index=True)
+            
+            df_p_guardar = df_actual_completo[columnas_guardar]
 
-        df_p_guardar.to_csv(PRESTAMOS_PATH, index=False)
-        st.session_state.prestamos = df_p_guardar
-        st.rerun()
+            if supabase:
+                try:
+                    db_items = supabase.table("prestamos").select("id").execute()
+                    if db_items.data:
+                        db_ids = {r["id"] for r in db_items.data}
+                        current_ids = set(df_p_guardar["id"].dropna().unique())
+                        to_delete = db_ids - current_ids
+                        for del_id in to_delete:
+                            supabase.table("prestamos").delete().eq("id", del_id).execute()
+
+                    for _, row in df_p_guardar.iterrows():
+                        row_data = row.to_dict()
+                        row_data["fecha"] = str(row_data["fecha"])
+                        if pd.notna(row_data.get("id")):
+                            supabase.table("prestamos").upsert(row_data).execute()
+                        else:
+                            row_data.pop("id", None)
+                            supabase.table("prestamos").insert(row_data).execute()
+                    st.success("¡La base de datos de préstamos se sincronizó correctamente con la nube!")
+                except Exception as e:
+                    st.error(f"❌ Error al actualizar préstamos en Supabase: {e}")
+            else:
+                st.success("¡La base de datos de préstamos ha sido actualizada temporalmente en el caché local!")
+
+            df_p_guardar.to_csv(PRESTAMOS_PATH, index=False)
+            st.session_state.prestamos = df_p_guardar
+            st.rerun()
 
 st.divider()
 st.markdown("### 📝 Editor y Visor de Base de Datos (COP)")
@@ -638,3 +658,4 @@ if st.button("💾 Aplicar y Guardar Cambios en Base de Datos"):
     edited_df.to_csv(DB_PATH, index=False)
     st.session_state.transactions = edited_df
     st.rerun()
+
