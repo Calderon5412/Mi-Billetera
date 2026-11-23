@@ -520,12 +520,12 @@ else:
     # Aplicamos filtro de fecha en préstamos según el 'selected_month' escogido dinámicamente
     df_prestamos_ver = df_prestamos.copy()
     df_prestamos_ver["fecha_dt"] = pd.to_datetime(df_prestamos_ver["fecha"], errors="coerce")
-    
+
     # Crear columna auxiliar del mes para filtrar de manera dinámica
     df_prestamos_ver["mes_prestamo"] = df_prestamos_ver["fecha_dt"].apply(
         lambda x: datetime.date(x.year, x.month, 1) if pd.notnull(x) else None
     )
-    
+
     # Filtrar el dataframe de préstamos por el mes seleccionado en la cabecera principal
     df_prestamos_ver = df_prestamos_ver[df_prestamos_ver["mes_prestamo"] == selected_month]
 
@@ -606,7 +606,13 @@ else:
 
 st.divider()
 st.markdown("### 📝 Editor y Visor de Base de Datos (COP)")
-df_ordenado = df[["id", "fecha", "detalle", "cuenta", "debe", "haber"]].sort_values(by="fecha", ascending=True) if "id" in df.columns else df[["fecha", "detalle", "cuenta", "debe", "haber"]].sort_values(by="fecha", ascending=True)
+
+# Filtrar el dataframe de transacciones principales para que el editor solo muestre las del mes activo
+if not df.empty:
+    # Ya calculamos df_month al inicio del script basado en selected_month
+    df_ordenado = df_month[["id", "fecha", "detalle", "cuenta", "debe", "haber"]].sort_values(by="fecha", ascending=True) if "id" in df_month.columns else df_month[["fecha", "detalle", "cuenta", "debe", "haber"]].sort_values(by="fecha", ascending=True)
+else:
+    df_ordenado = pd.DataFrame(columns=["id", "fecha", "detalle", "cuenta", "debe", "haber"])
 
 edited_df = st.data_editor(
     df_ordenado,
@@ -628,20 +634,36 @@ if st.button("💾 Aplicar y Guardar Cambios en Base de Datos"):
     edited_df["debe"] = pd.to_numeric(edited_df["debe"], errors='coerce').fillna(0.0)
     edited_df["haber"] = pd.to_numeric(edited_df["haber"], errors='coerce').fillna(0.0)
 
+    # Fusionamos los registros editados correspondientes a este mes con el resto del histórico almacenado en sesión
+    df_historico_completo = df.copy()
+    columnas_trans = ["id", "fecha", "detalle", "cuenta", "debe", "haber"]
+    
+    # Removemos del histórico todas las transacciones correspondientes al mes seleccionado para no duplicar
+    df_historico_completo = df_historico_completo[df_historico_completo["mes_auto"] != selected_month]
+    
+    # Aseguramos formato homogéneo
+    for col in columnas_trans:
+        if col not in edited_df.columns:
+            edited_df[col] = None
+            
+    # Unimos el histórico inalterado con las filas editadas del mes seleccionado
+    df_guardar_completo = pd.concat([df_historico_completo[columnas_trans], edited_df[columnas_trans]], ignore_index=True)
+
     if supabase:
         try:
+            # Obtenemos los ids actuales en la base de datos para este mes
+            # De esta forma evitamos borrar registros de otros meses en Supabase
             db_items = supabase.table("transacciones").select("id").execute()
             if db_items.data:
                 db_ids = {r["id"] for r in db_items.data}
-                current_ids = set()
-                if "id" in edited_df.columns:
-                    current_ids = set(edited_df["id"].dropna().unique())
+                current_ids = set(df_guardar_completo["id"].dropna().unique())
+                # Elminar únicamente los que existían antes pero ya no están presentes en la lista consolidada
                 to_delete = db_ids - current_ids
 
                 for del_id in to_delete:
                      supabase.table("transacciones").delete().eq("id", del_id).execute()
 
-            for _, row in edited_df.iterrows():
+            for _, row in df_guardar_completo.iterrows():
                 row_data = row.to_dict()
                 row_data["fecha"] = str(row_data["fecha"])
                 if "id" in row_data and pd.notna(row_data["id"]):
@@ -655,7 +677,6 @@ if st.button("💾 Aplicar y Guardar Cambios en Base de Datos"):
     else:
         st.success("¡Cambios aplicados localmente de forma temporal!")
 
-    edited_df.to_csv(DB_PATH, index=False)
-    st.session_state.transactions = edited_df
+    df_guardar_completo.to_csv(DB_PATH, index=False)
+    st.session_state.transactions = cargar_datos()
     st.rerun()
-
