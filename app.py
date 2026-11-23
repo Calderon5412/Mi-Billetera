@@ -25,8 +25,8 @@ st.set_page_config(page_title="Control Financiero", page_icon="💰", layout="wi
 # Estilo CSS personalizado para un acabado profesional
 st.markdown("""
     <style>
-    .main { background-color: #ffffff; }
-    .card { background-color: #ffffff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 15px; }
+    .main { background-color: #f2f4f6; }
+    .card { background-color: #ff0000; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 15px; }
     .metric-title { font-size: 0.9em; color: #6c757d; font-weight: bold; }
     .metric-value { font-size: 1.8em; font-weight: bold; color: #1e3d59; }
     </style>
