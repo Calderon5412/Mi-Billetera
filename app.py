@@ -118,7 +118,7 @@ df = st.session_state.transactions.copy()
 df_prestamos = st.session_state.prestamos.copy()
 
 # Lista de cuentas dinámicas por defecto
-cuentas_defecto = ["Efectivo", "BBVA", "Nequi", "Nu", "BBVA", "Pibank"]
+cuentas_defecto = ["Efectivo", "Banco", "Nequi", "Nu", "BBVA", "Pibank"]
 if 'accounts_list' not in st.session_state:
     if not df.empty:
         cuentas_existentes = list(df["cuenta"].dropna().unique())
