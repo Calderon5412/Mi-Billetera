@@ -432,7 +432,16 @@ selected_month = st.sidebar.selectbox(
     options=months,
     format_func=lambda x: x.strftime("%B %Y").capitalize() if hasattr(x, 'strftime') else str(x)
 )
+col_titulo, col_filtro = st.columns([3, 1])
 
+with col_filtro:
+    selected_month = st.selectbox(
+        "📅Seleccionar Mes:",
+        options=months,
+        format_func=lambda x: x.strftime("%B %Y").capitalize() if hasattr(x, 'strftime') else str(x),
+        label_visibility="collapsed"
+    )
+    
 # Segmentación de datos
 if not df.empty:
     df_before = df[df["mes_auto"] < selected_month]
