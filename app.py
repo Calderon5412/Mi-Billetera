@@ -27,7 +27,7 @@ st.markdown("""
     <style>
     .main { background-color: #f2f4f6; }
     .card { background-color: #91ffff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 15px; }
-    .metric-title { font-size: 0.9em; color: #ffffff; font-weight: bold; }
+    .metric-title { font-size: 0.9em; color: #000000; font-weight: bold; }
     .metric-value { font-size: 1.8em; font-weight: bold; color: #2636d1; }
     </style>
 """, unsafe_allow_html=True)
