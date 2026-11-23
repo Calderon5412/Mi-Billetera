@@ -17,7 +17,7 @@ except Exception as e:
     supabase = None
 
 # Código de acceso simple a la UI de la aplicación
-CODIGO_ACCESO = "124"  # Cambia esto por tu PIN o contraseña favorita
+CODIGO_ACCESO = "qwert"  # Cambia esto por tu PIN o contraseña favorita
 
 # Configuración inicial de la página
 st.set_page_config(page_title="Control Financiero", page_icon="💰", layout="wide")
