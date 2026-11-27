@@ -27,6 +27,7 @@ st.markdown("""
     <style>
     .main { background-color: #f2f4f6; }
     .card { background-color: #72e4f2; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 15px; }
+    .prestamo-card { background-color: #ffffff; padding: 15px; border-radius: 8px; border-left: 5px solid #ff9800; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 10px; }
     .metric-title { font-size: 0.9em; color: #000000; font-weight: bold; }
     .metric-value { font-size: 1.8em; font-weight: bold; color: #2636d1; }
     </style>
@@ -356,8 +357,14 @@ elif tipo_registro == "Cobrar Préstamo":
             c_fecha = st.date_input("Fecha del cobro:", datetime.date.today())
             c_cuenta_destino = st.selectbox("¿A qué cuenta ingresa el pago?:", st.session_state.accounts_list)
 
-            saldo_capital_pelt = prestamo_seleccionado["monto_inicial"] - prestamo_seleccionado["monto_pagado"]
-            c_capital = st.number_input("Monto abonado al Capital (COP):", min_value=0.0, max_value=float(saldo_capital_pelt), value=float(saldo_capital_pelt), step=1000.0, format="%.0f")
+            # Conversión de tipos extremadamente segura para evitar problemas de límites de cobro
+            monto_ini_val = float(pd.to_numeric(prestamo_seleccionado["monto_inicial"], errors='coerce'))
+            monto_pag_val = float(pd.to_numeric(prestamo_seleccionado["monto_pagado"], errors='coerce'))
+            saldo_capital_pelt = max(0.0, monto_ini_val - monto_pag_val)
+
+            st.write(f"💵 **Saldo restante de este préstamo:** {saldo_capital_pelt:,.0f} COP")
+            # Se elimina max_value del componente numérico para evitar bugs visuales molestos de límites
+            c_capital = st.number_input("Monto abonado al Capital (COP):", min_value=0.0, value=float(saldo_capital_pelt), step=1000.0, format="%.0f")
             c_intereses = st.number_input("Intereses Recibidos Reales:", min_value=0.0, value=0.0, step=1000.0, format="%.0f")
 
             boton_cobrar = st.form_submit_button("Registrar Cobro")
@@ -366,9 +373,9 @@ elif tipo_registro == "Cobrar Préstamo":
                 if c_capital <= 0 and c_intereses <= 0:
                     st.sidebar.error("El abono de capital o los intereses deben ser mayores a 0.")
                 else:
-                    nuevo_pago = float(prestamo_seleccionado["monto_pagado"] + c_capital)
-                    nuevos_intereses = float(prestamo_seleccionado["intereses_pagados_reales"] + c_intereses)
-                    nuevo_estado = "Pagado" if nuevo_pago >= prestamo_seleccionado["monto_inicial"] else "Pendiente"
+                    nuevo_pago = float(monto_pag_val + c_capital)
+                    nuevos_intereses = float(pd.to_numeric(prestamo_seleccionado["intereses_pagados_reales"], errors='coerce') + c_intereses)
+                    nuevo_estado = "Pagado" if nuevo_pago >= monto_ini_val else "Pendiente"
 
                     idx_original = prestamo_seleccionado.name
                     df_prestamos.at[idx_original, "monto_pagado"] = nuevo_pago
@@ -420,14 +427,12 @@ elif tipo_registro == "Cobrar Préstamo":
 # =========================================================================
 # VISUALIZACIÓN DE TABLEROS Y MÉTRICAS
 # =========================================================================
-# Filtro de Mes - Se ordena de forma descendente (mes más reciente primero por defecto)
 if not df.empty and df["mes_auto"].notna().any():
     valid_months = df["mes_auto"].dropna().unique()
     months = sorted(list(valid_months), reverse=True)
 else:
     months = [datetime.date(datetime.date.today().year, datetime.date.today().month, 1)]
 
-# Diseñamos una sección de cabecera con columnas para el filtro discreto en el panel principal
 col_titulo, col_filtro = st.columns([3, 1])
 
 with col_filtro:
@@ -438,7 +443,6 @@ with col_filtro:
         label_visibility="collapsed"
     )
 
-# Segmentación de datos
 if not df.empty:
     df_before = df[df["mes_auto"] < selected_month]
     df_month = df[df["mes_auto"] == selected_month]
@@ -446,20 +450,17 @@ else:
     df_before = pd.DataFrame(columns=["cuenta", "debe", "haber"])
     df_month = pd.DataFrame(columns=["cuenta", "debe", "haber"])
 
-# Calcular préstamos activos (por cobrar)
 total_prestado_pendiente = 0.0
 if not df_prestamos.empty:
     prestamos_activos_df = df_prestamos[df_prestamos["estado"] == "Pendiente"]
     if not prestamos_activos_df.empty:
-        total_prestado_pendiente = (prestamos_activos_df["monto_inicial"] - prestamos_activos_df["monto_pagado"]).sum()
+        total_prestado_pendiente = (pd.to_numeric(prestamos_activos_df["monto_inicial"], errors='coerce') - pd.to_numeric(prestamos_activos_df["monto_pagado"], errors='coerce')).sum()
 
-# Panel de Cuentas T
 cuentas = st.session_state.accounts_list
 
 with col_titulo:
     st.markdown(f"### 📊 Estado de tus Cuentas (COP) - {selected_month.strftime('%B %Y').capitalize() if hasattr(selected_month, 'strftime') else str(selected_month)}")
 
-# Agregar espacio para mostrar la tarjeta de préstamos dentro de la visualización de cuentas
 num_columnas = len(cuentas) + 1
 cols = st.columns(num_columnas)
 total_capital_bancos = 0.0
@@ -487,7 +488,6 @@ for idx, cta in enumerate(cuentas):
             </div>
             """, unsafe_allow_html=True)
 
-# Tarjeta de préstamos por cobrar de manera separada en la cuadrícula
 with cols[-1]:
     st.markdown(f"""
     <div class="card" style="border-left: 5px solid #ff9800;">
@@ -498,7 +498,6 @@ with cols[-1]:
     </div>
     """, unsafe_allow_html=True)
 
-# El Patrimonio Global Suma cuentas bancarias + préstamos activos en la calle
 patrimonio_total = total_capital_bancos + total_prestado_pendiente
 
 st.markdown(f"""
@@ -510,23 +509,19 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # =========================================================================
-# EDICIÓN DIRECTA DE TABLAS (ADMINISTRACIÓN Y CORRECCIONES)
+# EDICIÓN DIRECTA DE TABLAS Y VISTA ESTÉTICA DE SEGUIMIENTO DE PRÉSTAMOS
 # =========================================================================
 st.divider()
 st.markdown("### 👥 Control y Seguimiento de Préstamos")
 if df_prestamos.empty:
     st.info("No tienes registros de préstamos todavía.")
 else:
-    # Aplicamos filtro de fecha en préstamos según el 'selected_month' escogido dinámicamente
+    # Aplicamos filtro según el mes seleccionado
     df_prestamos_ver = df_prestamos.copy()
     df_prestamos_ver["fecha_dt"] = pd.to_datetime(df_prestamos_ver["fecha"], errors="coerce")
-
-    # Crear columna auxiliar del mes para filtrar de manera dinámica
     df_prestamos_ver["mes_prestamo"] = df_prestamos_ver["fecha_dt"].apply(
         lambda x: datetime.date(x.year, x.month, 1) if pd.notnull(x) else None
     )
-
-    # Filtrar el dataframe de préstamos por el mes seleccionado en la cabecera principal
     df_prestamos_ver = df_prestamos_ver[df_prestamos_ver["mes_prestamo"] == selected_month]
 
     if df_prestamos_ver.empty:
@@ -535,8 +530,31 @@ else:
         df_prestamos_ver = df_prestamos_ver.sort_values(by="fecha_dt", ascending=False)
         df_prestamos_ver["fecha"] = df_prestamos_ver["fecha_dt"].dt.date
         df_prestamos_ver = df_prestamos_ver.drop(columns=["fecha_dt", "mes_prestamo"])
-        df_prestamos_ver["Pendiente de Cobro"] = df_prestamos_ver["monto_inicial"] - df_prestamos_ver["monto_pagado"]
+        df_prestamos_ver["Pendiente de Cobro"] = pd.to_numeric(df_prestamos_ver["monto_inicial"], errors='coerce') - pd.to_numeric(df_prestamos_ver["monto_pagado"], errors='coerce')
 
+        # Tarjetas Estéticas Visuales
+        st.markdown("**Vista de Resumen de Préstamos Activos:**")
+        t_cols = st.columns(3)
+        for t_idx, (_, p_row) in enumerate(df_prestamos_ver.iterrows()):
+            m_ini = pd.to_numeric(p_row['monto_inicial'], errors='coerce')
+            m_pag = pd.to_numeric(p_row['monto_pagado'], errors='coerce')
+            m_pend = m_ini - m_pag
+            est = p_row['estado']
+            badge_color = "green" if est == "Pagado" else "orange"
+            
+            with t_cols[t_idx % 3]:
+                st.markdown(f"""
+                <div class="prestamo-card">
+                    <div style="float: right; color: {badge_color}; font-weight: bold;">{est}</div>
+                    <h4>👤 {p_row['deudor']}</h4>
+                    <p style="margin: 2px 0; font-size: 0.9em;">📅 Fecha: {p_row['fecha']}</p>
+                    <p style="margin: 2px 0; font-size: 0.9em;">💰 Inicial: {m_ini:,.0f} COP</p>
+                    <p style="margin: 2px 0; font-size: 0.9em; color: green;">✔️ Capital Abonado: {m_pag:,.0f} COP</p>
+                    <p style="margin: 2px 0; font-size: 1em; font-weight: bold; color: red;">🚨 Pendiente: {m_pend:,.0f} COP</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.markdown("**Tabla de Edición Directa de Préstamos:**")
         edited_prestamos_df = st.data_editor(
             df_prestamos_ver,
             num_rows="dynamic",
@@ -558,20 +576,18 @@ else:
         if st.button("💾 Guardar Cambios en Préstamos"):
             edited_prestamos_df["fecha"] = pd.to_datetime(edited_prestamos_df["fecha"], errors='coerce').dt.date
             edited_prestamos_df = edited_prestamos_df.dropna(subset=["fecha"])
-            edited_prestamos_df["monto_total_estimado"] = edited_prestamos_df["monto_inicial"] + (edited_prestamos_df["monto_inicial" ] * (edited_prestamos_df["tasa_interes"] / 100.0))
+            edited_prestamos_df["monto_total_estimado"] = edited_prestamos_df["monto_inicial"] + (edited_prestamos_df["monto_inicial"] * (edited_prestamos_df["tasa_interes"] / 100.0))
 
             columnas_guardar = ["id", "fecha", "deudor", "monto_inicial", "tasa_interes", "monto_total_estimado", "monto_pagado", "intereses_pagados_reales", "cuenta_origen", "estado"]
             for col in columnas_guardar:
                 if col not in edited_prestamos_df.columns:
                     edited_prestamos_df[col] = None
 
-            # Obtenemos los cambios hechos a las filas mostradas y actualizamos los registros originales de la sesión
             df_actual_completo = df_prestamos.copy()
             for _, row_edit in edited_prestamos_df.iterrows():
                 if pd.notna(row_edit.get("id")):
                     df_actual_completo.loc[df_actual_completo["id"] == row_edit["id"], columnas_guardar] = row_edit[columnas_guardar].values
                 else:
-                    # Si es nuevo, lo anexamos
                     df_actual_completo = pd.concat([df_actual_completo, pd.DataFrame([row_edit[columnas_guardar]])], ignore_index=True)
             
             df_p_guardar = df_actual_completo[columnas_guardar]
@@ -607,9 +623,7 @@ else:
 st.divider()
 st.markdown("### 📝 Editor y Visor de Base de Datos (COP)")
 
-# Filtrar el dataframe de transacciones principales para que el editor solo muestre las del mes activo
 if not df.empty:
-    # Ya calculamos df_month al inicio del script basado en selected_month
     df_ordenado = df_month[["id", "fecha", "detalle", "cuenta", "debe", "haber"]].sort_values(by="fecha", ascending=True) if "id" in df_month.columns else df_month[["fecha", "detalle", "cuenta", "debe", "haber"]].sort_values(by="fecha", ascending=True)
 else:
     df_ordenado = pd.DataFrame(columns=["id", "fecha", "detalle", "cuenta", "debe", "haber"])
@@ -634,30 +648,22 @@ if st.button("💾 Aplicar y Guardar Cambios en Base de Datos"):
     edited_df["debe"] = pd.to_numeric(edited_df["debe"], errors='coerce').fillna(0.0)
     edited_df["haber"] = pd.to_numeric(edited_df["haber"], errors='coerce').fillna(0.0)
 
-    # Fusionamos los registros editados correspondientes a este mes con el resto del histórico almacenado en sesión
     df_historico_completo = df.copy()
     columnas_trans = ["id", "fecha", "detalle", "cuenta", "debe", "haber"]
-    
-    # Removemos del histórico todas las transacciones correspondientes al mes seleccionado para no duplicar
     df_historico_completo = df_historico_completo[df_historico_completo["mes_auto"] != selected_month]
     
-    # Aseguramos formato homogéneo
     for col in columnas_trans:
         if col not in edited_df.columns:
             edited_df[col] = None
             
-    # Unimos el histórico inalterado con las filas editadas del mes seleccionado
     df_guardar_completo = pd.concat([df_historico_completo[columnas_trans], edited_df[columnas_trans]], ignore_index=True)
 
     if supabase:
         try:
-            # Obtenemos los ids actuales en la base de datos para este mes
-            # De esta forma evitamos borrar registros de otros meses en Supabase
             db_items = supabase.table("transacciones").select("id").execute()
             if db_items.data:
                 db_ids = {r["id"] for r in db_items.data}
                 current_ids = set(df_guardar_completo["id"].dropna().unique())
-                # Elminar únicamente los que existían antes pero ya no están presentes en la lista consolidada
                 to_delete = db_ids - current_ids
 
                 for del_id in to_delete:
